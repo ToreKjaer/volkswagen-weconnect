@@ -9,14 +9,19 @@
         <Title>Volkswagen WeConnect</Title>
         <Description>This class library interacts with Volkswagen's WeConnect services</Description>
         <PackageProjectUrl>https://github.com/ToreKjaer/volkswagen-weconnect/blob/master/README.md</PackageProjectUrl>
-        <PackageLicenseUrl>https://github.com/ToreKjaer/volkswagen-weconnect/blob/master/LICENSE</PackageLicenseUrl>
+        <PackageLicenseFile>LICENSE</PackageLicenseFile>
         <RepositoryUrl>https://github.com/ToreKjaer/volkswagen-weconnect</RepositoryUrl>
+        <Authors>torekjaer</Authors>
+        <RepositoryType>git</RepositoryType>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="HtmlAgilityPack" Version="1.11.62" />
-      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
-      <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+        <PackageReference Include="HtmlAgilityPack" Version="1.11.62"/>
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1"/>
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
+        <None Include="../README.md" Pack="true" PackagePath="\"/>
+        <None Include="../LICENSE" Pack="true" PackagePath="\"/>
     </ItemGroup>
 
 </Project>
