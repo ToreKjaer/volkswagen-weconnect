@@ -5,6 +5,12 @@
         <RootNamespace>volkswagen_weconnect</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <Title>Volkswagen WeConnect</Title>
+        <Description>This class library interacts with Volkswagen's WeConnect services</Description>
+        <PackageProjectUrl>https://github.com/ToreKjaer/volkswagen-weconnect/blob/master/README.md</PackageProjectUrl>
+        <PackageLicenseUrl>https://github.com/ToreKjaer/volkswagen-weconnect/blob/master/LICENSE</PackageLicenseUrl>
+        <RepositoryUrl>https://github.com/ToreKjaer/volkswagen-weconnect</RepositoryUrl>
     </PropertyGroup>
 
     <ItemGroup>
