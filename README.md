@@ -1,6 +1,8 @@
 ﻿# Volkswagen WeConnect Class Library for C#
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![NuGet Version](https://img.shields.io/nuget/v/ToreKjaer.VolkswagenWeConnect)](https://www.nuget.org/packages/ToreKjaer.VolkswagenWeConnect)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/ToreKjaer.VolkswagenWeConnect)](https://www.nuget.org/packages/ToreKjaer.VolkswagenWeConnect)
 
 Built upon the lovely work by [robinostlund](https://github.com/robinostlund/volkswagencarnet/tree/master) (Home Assistant integration).
 
@@ -22,7 +24,7 @@ More features may be added in the future, such as climate control, lock/unlock, 
 Installation is done via NuGet:
 
 ```bash
-Install-Package torekjaer/volkswagen-weconnect
+Install-Package ToreKjaer/VolkswagenWeConnect
 ```
 
 ## Usage
