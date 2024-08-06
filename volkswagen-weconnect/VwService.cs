@@ -22,10 +22,10 @@ public class VwService
         return data.Data;
     }
 
-    public Charge GetChargeData(Vehicle vehicle)
+    public Charge GetChargeData(string vin)
     {
-        _logger.LogInformation("Getting charge data for {Vin}", vehicle.Vin);
-        ChargingWrapper chargeWrapper = _vwConnection.RequestVwBackend<ChargingWrapper>($"/vehicle/v1/vehicles/{vehicle.Vin}/selectivestatus?jobs=charging");
+        _logger.LogInformation("Getting charge data for {Vin}", vin);
+        ChargingWrapper chargeWrapper = _vwConnection.RequestVwBackend<ChargingWrapper>($"/vehicle/v1/vehicles/{vin}/selectivestatus?jobs=charging");
         return new Charge(
             chargeWrapper.Charging.BatteryStatus.Value.CurrentSoc,
             chargeWrapper.Charging.BatteryStatus.Value.CruisingRangeKm,

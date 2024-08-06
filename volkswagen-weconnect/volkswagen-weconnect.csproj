@@ -15,6 +15,7 @@
         <RepositoryType>git</RepositoryType>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageId>ToreKjaer.VolkswagenWeConnect</PackageId>
+        <Version>1.0.1</Version>
     </PropertyGroup>
 
     <ItemGroup>
