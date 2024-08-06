@@ -35,8 +35,9 @@ using volkswagen_weconnect;
 var auth = new VwAuth("username", "password");
 using (var connection = new VwConnection(auth, loggerFactory))
 {
-    List<Vehicle> vehicles = connection.GetVehicles();
-    Charge chargeData = vehicles[0].GetChargeData();
+    VwService vwService = new VwService(connection, loggerFactory);
+    List<Vehicle> vehicles = vwService.GetVehicles(); // List of all vehicles
+    Charge chargeData = connection.GetChargeData(vehicles[0].Vin); // Charge data for vehicle with the specified VIN
 }
 ```
 
