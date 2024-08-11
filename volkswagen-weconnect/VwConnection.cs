@@ -1,7 +1,10 @@
 ﻿using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using HtmlAgilityPack;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using volkswagen_weconnect.Dtos;
@@ -16,8 +19,7 @@ public class VwConnection : IDisposable
     private readonly JsonSerializerOptions _jsonSerializerOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
     private readonly JsonSerializerOptions _camelCaseJsonSerializerOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly ILogger<VwConnection> _logger;
-
-    private string? _token;
+    private static readonly IMemoryCache _cache = new MemoryCache(new MemoryCacheOptions());
 
     public VwConnection(VwAuth vwAuth, ILoggerFactory loggerFactory)
     {
@@ -71,18 +73,69 @@ public class VwConnection : IDisposable
 
     private string GetToken()
     {
-        if (_token != null)
+        string cacheKey = CreateCacheKey();
+
+        if (_cache.TryGetValue($"{cacheKey}Token", out string? token))
         {
-            return _token;
+            return token!;
         }
 
-        _token = Login();
+        Dictionary<string, string> tokenResponse; 
+        if (_cache.TryGetValue($"{cacheKey}RefreshToken", out string? refreshToken) && TryLoginUsingRefreshToken(refreshToken!, out Dictionary<string, string>? refreshResponse))
+        {
+            tokenResponse = refreshResponse!;
+        }
+        else
+        {
+            tokenResponse = Login();
+        }
+        
+        
         _logger.LogInformation("Succesfully logged in to VW");
-        return _token;
+        token = tokenResponse["access_token"];
+        _cache.Set($"{cacheKey}Token", token, TimeSpan.FromSeconds(int.Parse(tokenResponse["expires_in"])));
+        _cache.Set($"{cacheKey}RefreshToken", tokenResponse["refresh_token"], TimeSpan.FromHours(24));
+        
+        return token;
+        
     }
 
-    private string Login()
+    private string CreateCacheKey()
     {
+        // Create a cache key based on the username and password hash
+        using SHA256 sha256 = SHA256.Create();
+        byte[] hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(_vwAuth.Username + _vwAuth.Password));
+        return Convert.ToBase64String(hash);
+    }
+
+    private bool TryLoginUsingRefreshToken(string refreshToken, out Dictionary<string, string>? tokenResponse)
+    {
+        _logger.LogInformation("Logging in to VW using refresh token");
+        string url = $"{AppConstants.BaseApi}/login/v1/idk/token";
+        HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Post, url);
+        requestMessage.Content = new FormUrlEncodedContent(new List<KeyValuePair<string, string>>
+        {
+            new("grant_type", "refresh_token"),
+            new("refresh_token", refreshToken),
+            new("client_id", AppConstants.ClientId)
+        });
+        AppConstants.SetAuthHeaders(requestMessage);
+        HttpResponseMessage response = _client.Send(requestMessage);
+        if (response.IsSuccessStatusCode)
+        {
+            string json = response.Content.ReadAsStringAsync().Result;
+            tokenResponse = JsonConvert.DeserializeObject<Dictionary<string, string>>(json)!;
+            return true;
+        }
+
+        tokenResponse = null;
+        return false;
+    }
+
+    private Dictionary<string, string> Login()
+    {
+        _logger.LogInformation("Logging in to VW using username and password");
+        
         // Get OpenID configuration
         _logger.LogInformation("Get OpenID configuration");
         OpenIdConfig openIdConfig = GetOpenIdConfig();
@@ -115,7 +168,7 @@ public class VwConnection : IDisposable
         }
 
         // Extract code and get JWT token
-        _logger.LogInformation("Extract code and get JWT token from query string: {codeQueryString}", codeQueryString);
+        _logger.LogInformation("Extract code and get JWT token from query");
         return ExtractCodeAndGetToken(openIdConfig, codeQueryString, clientId);
     }
 
@@ -258,7 +311,7 @@ public class VwConnection : IDisposable
         return FollowRedirects(requestMessage);
     }
 
-    private string ExtractCodeAndGetToken(OpenIdConfig openIdConfig, string codeQueryString, string clientId)
+    private Dictionary<string, string> ExtractCodeAndGetToken(OpenIdConfig openIdConfig, string codeQueryString, string clientId)
     {
         string code = Regex.Match(codeQueryString, "[?&]code=([^&]*)").Groups[1].Value;
         HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Post, openIdConfig.TokenEndpoint);
@@ -271,7 +324,7 @@ public class VwConnection : IDisposable
         });
         AppConstants.SetSessionHeaders(requestMessage);
         string json = FollowRedirects(requestMessage);
-        return JsonConvert.DeserializeObject<Dictionary<string, string>>(json)!["access_token"];
+        return JsonConvert.DeserializeObject<Dictionary<string, string>>(json)!;
     }
 
     private class OpenIdConfig
@@ -292,7 +345,6 @@ public class VwConnection : IDisposable
             return;
         }
 
-        _token = null;
         _client.Dispose();
 
         _disposed = true;
