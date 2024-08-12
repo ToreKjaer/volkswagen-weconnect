@@ -77,7 +77,7 @@ public class VwConnection : IDisposable
 
         if (_cache.TryGetValue($"{cacheKey}Token", out string? token))
         {
-            return token!;
+            // return token!;
         }
 
         Dictionary<string, string> tokenResponse; 
@@ -119,7 +119,7 @@ public class VwConnection : IDisposable
             new("refresh_token", refreshToken),
             new("client_id", AppConstants.ClientId)
         });
-        AppConstants.SetAuthHeaders(requestMessage);
+        AppConstants.SetSessionHeaders(requestMessage);
         HttpResponseMessage response = _client.Send(requestMessage);
         if (response.IsSuccessStatusCode)
         {
