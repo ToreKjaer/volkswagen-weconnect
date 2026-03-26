@@ -4,7 +4,7 @@ public class Charge
 {
     public int CurrentSoc { get; set; }
     public int CruisingRangeKm { get; set; }
-    public string ChargingState { get; set; }
+    public string ChargingState { get; set; } = string.Empty;
     public decimal ChargePowerKw { get; set; }
     public bool IsPlugConnected { get; set; }
 

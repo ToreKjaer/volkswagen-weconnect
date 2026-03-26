@@ -1,4 +1,4 @@
-﻿using System.Net.Http.Headers;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -50,24 +50,24 @@ public class VwConnection : IDisposable
     {
         string url = $"{AppConstants.BaseApi}{path}";
         _logger.LogInformation("Requesting data from VW backend: {url}", url);
-        
+
         HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Get, url);
         requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GetToken());
         AppConstants.SetSessionHeaders(requestMessage);
         HttpResponseMessage response = _client.Send(requestMessage);
-        
+
         if (!response.IsSuccessStatusCode)
         {
             throw new InvalidOperationException($"Failed to get data from VW backend, status code: {response.StatusCode}");
         }
-        
+
         string json = response.Content.ReadAsStringAsync().Result;
 
         if (_logger.IsEnabled(LogLevel.Debug))
         {
             _logger.LogDebug("Response: {json}", json);
         }
-        
+
         return JsonSerializer.Deserialize<T>(json, _camelCaseJsonSerializerOptions)!;
     }
 
@@ -80,7 +80,7 @@ public class VwConnection : IDisposable
             // return token!;
         }
 
-        Dictionary<string, string> tokenResponse; 
+        Dictionary<string, string> tokenResponse;
         if (_cache.TryGetValue($"{cacheKey}RefreshToken", out string? refreshToken) && TryLoginUsingRefreshToken(refreshToken!, out Dictionary<string, string>? refreshResponse))
         {
             tokenResponse = refreshResponse!;
@@ -89,15 +89,13 @@ public class VwConnection : IDisposable
         {
             tokenResponse = Login();
         }
-        
-        
+
         _logger.LogInformation("Succesfully logged in to VW");
         token = tokenResponse["access_token"];
         _cache.Set($"{cacheKey}Token", token, TimeSpan.FromSeconds(int.Parse(tokenResponse["expires_in"])));
         _cache.Set($"{cacheKey}RefreshToken", tokenResponse["refresh_token"], TimeSpan.FromHours(24));
-        
+
         return token;
-        
     }
 
     private string CreateCacheKey()
@@ -135,91 +133,125 @@ public class VwConnection : IDisposable
     private Dictionary<string, string> Login()
     {
         _logger.LogInformation("Logging in to VW using username and password");
-        
+
         // Get OpenID configuration
         _logger.LogInformation("Get OpenID configuration");
         OpenIdConfig openIdConfig = GetOpenIdConfig();
 
-        // Get authorization page
+        // Get authorization page (login page)
         _logger.LogInformation("Get authorization page");
         string authorizationPage = GetAuthorizationPage(openIdConfig);
 
-        // Extract form data
-        _logger.LogInformation("Extract form data (email)");
-        List<KeyValuePair<string, string>> formValues = GetFormContent(authorizationPage, "emailPasswordForm", out string actionUrl);
-        // Get "email" key value pair and set its value
-        _logger.LogInformation("Setting email form value to {mail}", _vwAuth.Username);
-        KeyValuePair<string, string> mail = formValues.FirstOrDefault(pair => pair.Key == "email");
-        formValues[formValues.IndexOf(mail)] = new KeyValuePair<string, string>(mail.Key, _vwAuth.Username);
+        // Extract state token from login page
+        _logger.LogInformation("Extract state token");
+        string stateToken = ExtractStateToken(authorizationPage);
 
-        // POST email
-        // https://identity.vwgroup.io/signin-service/v1/{CLIENT_ID}/login/identifier
-        _logger.LogInformation("POST email form");
-        string passwordLoginPage = PostEmailForm(openIdConfig, formValues, actionUrl, out string refererUrl);
-        formValues = GetPasswordFormContent(passwordLoginPage, out string clientId, out actionUrl);
-        formValues.Add(new KeyValuePair<string, string>("password", _vwAuth.Password));
+        // POST username + password + state in a single request
+        _logger.LogInformation("POST login form");
+        string loginUrl = $"{openIdConfig.Issuer}/u/login?state={stateToken}";
+        HttpRequestMessage loginRequest = new HttpRequestMessage(HttpMethod.Post, loginUrl);
+        loginRequest.Content = new FormUrlEncodedContent(new List<KeyValuePair<string, string>>
+        {
+            new("username", _vwAuth.Username),
+            new("password", _vwAuth.Password),
+            new("state", stateToken)
+        });
+        AppConstants.SetAuthHeaders(loginRequest);
 
-        // POST password
-        _logger.LogInformation("POST password form");
-        string codeQueryString = PostPasswordForm(openIdConfig, formValues, clientId, actionUrl, refererUrl);
+        // Send login request (expect a 302 redirect)
+        HttpResponseMessage loginResponse = _client.Send(loginRequest);
+
+        if (loginResponse.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            throw new InvalidOperationException("Login failed: wrong username or password");
+        }
+
+        if ((int)loginResponse.StatusCode is not (301 or 302 or 303))
+        {
+            throw new InvalidOperationException($"Login failed with status code: {loginResponse.StatusCode}");
+        }
+
+        if (!loginResponse.Headers.Contains("Location"))
+        {
+            throw new InvalidOperationException("Login response missing Location header");
+        }
+
+        // Follow redirects to get the authorization code
+        string redirectUrl = loginResponse.Headers.GetValues("Location").First();
+        if (!redirectUrl.Contains("http"))
+        {
+            redirectUrl = $"{openIdConfig.Issuer}{redirectUrl}";
+        }
+
+        string codeQueryString = FollowRedirects(new HttpRequestMessage(HttpMethod.Get, redirectUrl));
         if (!codeQueryString.Contains("code="))
         {
-            throw new InvalidOperationException("Failed to get code");
+            throw new InvalidOperationException("Failed to get authorization code");
         }
 
         // Extract code and get JWT token
         _logger.LogInformation("Extract code and get JWT token from query");
-        return ExtractCodeAndGetToken(openIdConfig, codeQueryString, clientId);
+        return ExtractCodeAndGetToken(openIdConfig, codeQueryString, AppConstants.ClientId);
     }
 
     private string GetAuthorizationPage(OpenIdConfig openIdConfig)
     {
-        // https://identity.vwgroup.io/oidc/v1/authorize?client_id={CLIENT_ID}&scope={SCOPE}&response_type={TOKEN_TYPES}&redirect_uri={APP_URI}
         string url = $"{openIdConfig.AuthorizationEndpoint}?client_id={AppConstants.ClientId}&redirect_uri={AppConstants.AppUri}&response_type={AppConstants.TokenTypes}&scope={AppConstants.Scope}";
         HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Get, url);
-        requestMessage.Content = new FormUrlEncodedContent(new List<KeyValuePair<string, string>>());
         AppConstants.SetAuthHeaders(requestMessage);
-        return FollowRedirects(requestMessage);
+
+        // The authorize endpoint returns a 302 redirect to the login page
+        HttpResponseMessage response = _client.Send(requestMessage);
+
+        if ((int)response.StatusCode is not (301 or 302 or 303))
+        {
+            throw new InvalidOperationException($"Expected redirect from authorization endpoint, got: {response.StatusCode}");
+        }
+
+        if (!response.Headers.Contains("Location"))
+        {
+            throw new InvalidOperationException("Authorization response missing Location header");
+        }
+
+        string redirectUrl = response.Headers.GetValues("Location").First();
+        if (!redirectUrl.Contains("http"))
+        {
+            redirectUrl = $"{requestMessage.RequestUri!.Scheme}://{requestMessage.RequestUri!.Host}{redirectUrl}";
+        }
+
+        // Fetch the actual login page
+        HttpRequestMessage loginPageRequest = new HttpRequestMessage(HttpMethod.Get, redirectUrl);
+        AppConstants.SetAuthHeaders(loginPageRequest);
+        HttpResponseMessage loginPageResponse = _client.Send(loginPageRequest);
+
+        if (!loginPageResponse.IsSuccessStatusCode)
+        {
+            throw new InvalidOperationException($"Failed to fetch login page, status: {loginPageResponse.StatusCode}");
+        }
+
+        return loginPageResponse.Content.ReadAsStringAsync().Result;
     }
 
-    private List<KeyValuePair<string, string>> GetFormContent(string html, string formId, out string actionUrl)
+    private string ExtractStateToken(string loginPageHtml)
     {
         HtmlDocument htmlDocument = new HtmlDocument();
-        htmlDocument.LoadHtml(html);
-        HtmlNode formNode = htmlDocument.GetElementbyId(formId);
+        htmlDocument.LoadHtml(loginPageHtml);
+        HtmlNode stateInput = htmlDocument.DocumentNode.SelectSingleNode("//input[@name='state']");
 
-        if (formNode == null)
+        if (stateInput == null)
         {
-            throw new InvalidOperationException($"Failed to get form with id '{formId}'");
+            throw new InvalidOperationException("Failed to find state token in login page");
         }
 
-        actionUrl = formNode.GetAttributeValue("action", string.Empty);
+        string stateToken = stateInput.GetAttributeValue("value", string.Empty);
 
-        if (actionUrl == string.Empty)
+        if (string.IsNullOrEmpty(stateToken))
         {
-            throw new InvalidOperationException("Failed to get action URL");
+            throw new InvalidOperationException("State token value is empty");
         }
 
-        List<KeyValuePair<string, string>> formValues = new List<KeyValuePair<string, string>>();
-        foreach (HtmlNode inputNode in formNode.SelectNodes("//input"))
-        {
-            string name = inputNode.GetAttributeValue("name", string.Empty);
-            string value = inputNode.GetAttributeValue("value", string.Empty);
-            formValues.Add(new KeyValuePair<string, string>(name, value));
-        }
-
-        return formValues;
-    }
-
-    private string PostEmailForm(OpenIdConfig openIdConfig, List<KeyValuePair<string, string>> formValues, string actionUrl, out string refererUrl)
-    {
-        refererUrl = $"{openIdConfig.Issuer}{actionUrl}";
-        HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Post, refererUrl);
-        requestMessage.Content = new FormUrlEncodedContent(formValues);
-        AppConstants.SetAuthHeaders(requestMessage);
-        requestMessage.Headers.Add("Referer", openIdConfig.AuthorizationEndpoint);
-        requestMessage.Headers.Add("Origin", openIdConfig.Issuer);
-        return FollowRedirects(requestMessage);
+        _logger.LogDebug("Extracted state token: {stateToken}", stateToken);
+        return stateToken;
     }
 
     private string FollowRedirects(HttpRequestMessage request)
@@ -230,7 +262,6 @@ public class VwConnection : IDisposable
             return response.Content.ReadAsStringAsync().Result;
         }
 
-        var result = response.Content.ReadAsStringAsync().Result;
         if ((int)response.StatusCode is not (301 or 302 or 303 or 304))
         {
             throw new InvalidOperationException($"Failed to follow redirect, status code: {response.StatusCode}");
@@ -247,68 +278,18 @@ public class VwConnection : IDisposable
             return redirectUrl;
         }
 
-        if (!redirectUrl.Contains("http")) // Relative URL
+        if (!redirectUrl.Contains("http"))
         {
             redirectUrl = request.RequestUri!.Scheme + "://" + request.RequestUri!.Host + redirectUrl;
         }
 
-        // Build a clone of the original request
-        HttpRequestMessage newRequest = new HttpRequestMessage(HttpMethod.Get, redirectUrl)
-        {
-            Content = request.Content
-        };
+        HttpRequestMessage newRequest = new HttpRequestMessage(HttpMethod.Get, redirectUrl);
         foreach (KeyValuePair<string, IEnumerable<string>> header in request.Headers)
         {
             newRequest.Headers.Add(header.Key, header.Value);
         }
 
         return FollowRedirects(newRequest);
-    }
-
-    private List<KeyValuePair<string, string>> GetPasswordFormContent(string passwordLoginPage, out string clientId, out string actionUrl)
-    {
-        HtmlDocument htmlDocument = new HtmlDocument();
-        htmlDocument.LoadHtml(passwordLoginPage);
-        HtmlNode scriptNode = htmlDocument.DocumentNode.SelectSingleNode("//script[contains(., 'window._ID')]");
-        if (scriptNode == null)
-        {
-            throw new InvalidOperationException("Failed to find script node containing 'window._ID'");
-        }
-
-        string script = scriptNode.InnerText;
-        List<KeyValuePair<string, string>> formValues = new List<KeyValuePair<string, string>>();
-
-        formValues.Add(new KeyValuePair<string, string>("relayState", Regex.Match(script, "\"relayState\":\"([^\"]*)\"").Groups[1].Value));
-        formValues.Add(new KeyValuePair<string, string>("hmac", Regex.Match(script, "\"hmac\":\"([^\"]*)\"").Groups[1].Value));
-        formValues.Add(new KeyValuePair<string, string>("email", Regex.Match(script, "\"email\":\"([^\"]*)\"").Groups[1].Value));
-        formValues.Add(new KeyValuePair<string, string>("_csrf", Regex.Match(script, "csrf_token:\\s*'([^\"']*)'").Groups[1].Value));
-
-        clientId = Regex.Match(script, "\"clientId\":\\s*\"([^\"']*)\"").Groups[1].Value;
-        actionUrl = Regex.Match(script, "\"postAction\":\\s*\"([^\"']*)\"").Groups[1].Value;
-
-        if (_logger.IsEnabled(LogLevel.Debug))
-        {
-            // Log form values
-            foreach (KeyValuePair<string, string> formValue in formValues)
-            {
-                _logger.LogDebug("{key} = {value}", formValue.Key, formValue.Value);
-            }
-            _logger.LogDebug("clientId = {clientId}", clientId);
-            _logger.LogDebug("actionUrl = {actionUrl}", actionUrl);
-        }
-        
-        return formValues;
-    }
-
-    private string PostPasswordForm(OpenIdConfig openIdConfig, List<KeyValuePair<string, string>> formValues, string clientId, string action, string refererUrl)
-    {
-        // https://identity.vwgroup.io/signin-service/v1/{CLIENT_ID}/login/authenticate
-        string url = $"{openIdConfig.Issuer}/signin-service/v1/{clientId}/{action}";
-        HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Post, url);
-        requestMessage.Content = new FormUrlEncodedContent(formValues);
-        AppConstants.SetAuthHeaders(requestMessage);
-        requestMessage.Headers.Add("Referer", refererUrl);
-        return FollowRedirects(requestMessage);
     }
 
     private Dictionary<string, string> ExtractCodeAndGetToken(OpenIdConfig openIdConfig, string codeQueryString, string clientId)
@@ -333,9 +314,9 @@ public class VwConnection : IDisposable
         public string? TokenEndpoint { get; set; }
         public string? Issuer { get; set; }
     }
-    
+
     #region IDisposable Support
-    
+
     private bool _disposed = false;
 
     public void Dispose()
