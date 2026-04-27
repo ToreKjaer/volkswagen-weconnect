@@ -5,6 +5,10 @@
         <RootNamespace>volkswagen_weconnect</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <Version>1.1.0</Version>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <PackageId>ToreKjaer.VolkswagenWeConnect</PackageId>
+        <Authors>ToreKjaer</Authors>
     </PropertyGroup>
 
     <ItemGroup>
