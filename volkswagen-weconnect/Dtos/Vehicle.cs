@@ -2,8 +2,8 @@
 
 public class Vehicle
 {
-    public string Vin { get; set; }
-    public string Model { get; set; }
-    public string Nickname { get; set; }
-    public string CarType { get; set; }
+    public required string Vin { get; set; }
+    public required string Model { get; set; }
+    public required string Nickname { get; set; }
+    public required string CarType { get; set; }
 }

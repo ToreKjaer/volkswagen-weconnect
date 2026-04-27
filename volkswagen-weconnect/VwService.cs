@@ -38,24 +38,24 @@ public class VwService
 
     private class DataWrapper
     {
-        public List<Vehicle> Data { get; set; }
+        public required List<Vehicle> Data { get; set; }
     }
 
     private class ChargingWrapper
     {
-        public Charging Charging { get; set; }
+        public required Charging Charging { get; set; }
     }
 
     private class Charging
     {
-        public BatteryStatus BatteryStatus { get; set; }
-        public ChargingStatus ChargingStatus { get; set; }
-        public PlugStatus PlugStatus { get; set; }
+        public required BatteryStatus BatteryStatus { get; set; }
+        public required ChargingStatus ChargingStatus { get; set; }
+        public required PlugStatus PlugStatus { get; set; }
     }
 
     private class BatteryStatus
     {
-        public BatteryStatusValue Value { get; set; }
+        public required BatteryStatusValue Value { get; set; }
     }
 
     private class BatteryStatusValue
@@ -68,24 +68,24 @@ public class VwService
 
     private class ChargingStatus
     {
-        public ChargingStatusValue Value { get; set; }
+        public required ChargingStatusValue Value { get; set; }
     }
 
     private class ChargingStatusValue
     {
-        public string ChargingState { get; set; }
+        public string ChargingState { get; set; } = string.Empty;
 
         [JsonPropertyName("chargePower_kW")] public decimal ChargePowerKw { get; set; }
     }
 
     private class PlugStatus
     {
-        public PlugStatusValue Value { get; set; }
+        public required PlugStatusValue Value { get; set; }
     }
 
     private class PlugStatusValue
     {
-        public string PlugConnectionState { get; set; }
+        public string PlugConnectionState { get; set; } = string.Empty;
     }
 
     #endregion

@@ -1,30 +1,17 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
         <RootNamespace>volkswagen_weconnect</RootNamespace>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Title>Volkswagen WeConnect</Title>
-        <Description>This class library interacts with Volkswagen's WeConnect services</Description>
-        <PackageProjectUrl>https://github.com/ToreKjaer/volkswagen-weconnect/blob/master/README.md</PackageProjectUrl>
-        <PackageLicenseFile>LICENSE</PackageLicenseFile>
-        <RepositoryUrl>https://github.com/ToreKjaer/volkswagen-weconnect</RepositoryUrl>
-        <Authors>torekjaer</Authors>
-        <RepositoryType>git</RepositoryType>
-        <PackageReadmeFile>README.md</PackageReadmeFile>
-        <PackageId>ToreKjaer.VolkswagenWeConnect</PackageId>
-        <Version>1.0.3</Version>
     </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="HtmlAgilityPack" Version="1.11.62"/>
-        <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.0" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1"/>
+        <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2"/>
         <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
-        <None Include="../README.md" Pack="true" PackagePath="\"/>
-        <None Include="../LICENSE" Pack="true" PackagePath="\"/>
     </ItemGroup>
 
 </Project>
